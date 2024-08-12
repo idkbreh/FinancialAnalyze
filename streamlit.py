@@ -1,8 +1,8 @@
 import yfinance as yf
 import pandas as pd
 import streamlit as st
-from bs4 import BeautifulSoup
 import requests
+from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import plotly.express as px
@@ -14,7 +14,7 @@ sns.set_style("whitegrid")
 # Set up the navigation
 st.title("Financial Analysis Dashboard")
 st.sidebar.title("Navigation")
-page = st.sidebar.selectbox("Select a section", ["Recession Probability", "Stock Analysis"])
+page = st.sidebar.selectbox("Select a section", ["Recession Probability", "Stock Analysis", "Profit Prediction"])
 
 # Recession Probability Analysis
 if page == "Recession Probability":
@@ -134,3 +134,58 @@ elif page == "Stock Analysis":
     # Plotting the Worth Buying Score
     fig = px.bar(df, x='Stock', y='Worth Buying (%)', title='Worth Buying Score by Stock', color='Worth Buying (%)', color_continuous_scale=px.colors.sequential.Viridis)
     st.plotly_chart(fig)
+
+# Profit Prediction
+if page == "Profit Prediction":
+    st.header("Predict Your Investment Profit")
+    
+    stocks = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'FB', 'NFLX', 'NVDA', 'BRK-B', 'JPM', 'V', 'MA', 'UNH', 'HD', 'PG', 'DIS', 'PYPL', 'INTC', 'CSCO', 'PFE']
+    selected_stocks = st.multiselect("Select stocks", stocks)
+    investment_amount = st.number_input("Enter your investment amount (in Baht)", min_value=0.0, step=100.0, value=10000.0)
+    investment_duration = st.number_input("Enter the investment duration (in months)", min_value=1, step=1, value=12)
+    
+    # Map the duration to a valid yfinance period
+    if investment_duration <= 1:
+        period = '1mo'
+    elif investment_duration <= 3:
+        period = '3mo'
+    elif investment_duration <= 6:
+        period = '6mo'
+    elif investment_duration <= 12:
+        period = '1y'
+    elif investment_duration <= 24:
+        period = '2y'
+    elif investment_duration <= 60:
+        period = '5y'
+    else:
+        period = '10y'
+
+    # Calculate potential profit
+    if selected_stocks and investment_amount > 0:
+        data = []
+        for stock in selected_stocks:
+            history_data = yf.Ticker(stock).history(period=period)
+            
+            # Ensure there is enough data to make a prediction
+            if len(history_data) < investment_duration:
+                st.warning(f"Not enough data for {stock} to predict profit over {investment_duration} months.")
+                continue
+            
+            # Calculate the return over the exact number of months requested
+            initial_price = history_data.iloc[0]['Close']
+            final_price = history_data.iloc[-1]['Close']
+            total_return = (final_price - initial_price) / initial_price
+            
+            # Calculate profit
+            profit = investment_amount * total_return
+            data.append([stock, initial_price, final_price, total_return * 100, profit])
+        
+        # Display results
+        if data:
+            df = pd.DataFrame(data, columns=['Stock', 'Initial Price', 'Final Price', 'Return (%)', 'Profit (Baht)'])
+            st.write("Prediction Results:")
+            st.dataframe(df)
+            
+            # Plot the results
+            fig = px.bar(df, x='Stock', y='Profit (Baht)', title='Predicted Profit by Stock', color='Profit (Baht)', color_continuous_scale=px.colors.sequential.Viridis)
+            st.plotly_chart(fig)
