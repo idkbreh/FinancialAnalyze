@@ -8,15 +8,12 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 import seaborn as sns
 
-# Set Seaborn style
 sns.set_style("whitegrid")
 
-# Set up the navigation
 st.title("Financial Analysis Dashboard")
 st.sidebar.title("Navigation")
 page = st.sidebar.selectbox("Select a section", ["Recession Probability", "Stock Analysis", "Profit Prediction"])
 
-# Recession Probability Analysis
 if page == "Recession Probability":
     st.header("Economic Recession Probability Analysis")
     
@@ -59,17 +56,23 @@ if page == "Recession Probability":
     st.write("Cleaned DataFrame:")
     st.dataframe(df.head(20))
     
-    # Plotting the Recession Probability
     fig, ax = plt.subplots()
     ax.pie([recession_probability, 100 - recession_probability], labels=['Recession Signals', 'Other'], autopct='%1.1f%%', startangle=90, colors=['#ff9999','#66b3ff'])
-    ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+    ax.axis('equal')
     st.pyplot(fig)
 
-# Stock Analysis
 elif page == "Stock Analysis":
     st.header("Stock Analysis: Worth Buying Score")
     
     stocks = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'FB', 'NFLX', 'NVDA', 'BRK-B', 'JPM', 'V', 'MA', 'UNH', 'HD', 'PG', 'DIS', 'PYPL', 'INTC', 'CSCO', 'PFE']
+    selected_stocks = st.multiselect("Select stocks to analyze", stocks)
+    search_stock = st.text_input("Search for a specific stock by ticker symbol (e.g., 'GOOG', 'BABA')")
+
+    if search_stock:
+        if search_stock.upper() not in selected_stocks:
+            selected_stocks.append(search_stock.upper())
+            st.write(f"Added {search_stock.upper()} to your selection.")
+
     data = []
 
     thresholds = {
@@ -91,7 +94,7 @@ elif page == "Stock Analysis":
         else:
             return ((value - min_val) / (max_val - min_val)) * 100
 
-    for stock in stocks:
+    for stock in selected_stocks:
         stock_info = yf.Ticker(stock).info
         
         pe_ratio = stock_info.get('trailingPE', None)
@@ -131,20 +134,24 @@ elif page == "Stock Analysis":
     st.write("Stock Analysis DataFrame:")
     st.dataframe(df)
     
-    # Plotting the Worth Buying Score
     fig = px.bar(df, x='Stock', y='Worth Buying (%)', title='Worth Buying Score by Stock', color='Worth Buying (%)', color_continuous_scale=px.colors.sequential.Viridis)
     st.plotly_chart(fig)
 
-# Profit Prediction
-if page == "Profit Prediction":
+elif page == "Profit Prediction":
     st.header("Predict Your Investment Profit")
     
     stocks = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'FB', 'NFLX', 'NVDA', 'BRK-B', 'JPM', 'V', 'MA', 'UNH', 'HD', 'PG', 'DIS', 'PYPL', 'INTC', 'CSCO', 'PFE']
     selected_stocks = st.multiselect("Select stocks", stocks)
+    search_stock = st.text_input("Search for a specific stock by ticker symbol (e.g., 'GOOG', 'BABA')")
+
+    if search_stock:
+        if search_stock.upper() not in selected_stocks:
+            selected_stocks.append(search_stock.upper())
+            st.write(f"Added {search_stock.upper()} to your selection.")
+
     investment_amount = st.number_input("Enter your investment amount (in Baht)", min_value=0.0, step=100.0, value=10000.0)
     investment_duration = st.number_input("Enter the investment duration (in months)", min_value=1, step=1, value=12)
     
-    # Map the duration to a valid yfinance period
     if investment_duration <= 1:
         period = '1mo'
     elif investment_duration <= 3:
@@ -160,32 +167,37 @@ if page == "Profit Prediction":
     else:
         period = '10y'
 
-    # Calculate potential profit
     if selected_stocks and investment_amount > 0:
+        total_profit = 0
         data = []
         for stock in selected_stocks:
-            history_data = yf.Ticker(stock).history(period=period)
+            ticker = yf.Ticker(stock)
+            current_price = ticker.history(period='1d').iloc[-1]['Close']
+            history_data = ticker.history(period=period)
             
-            # Ensure there is enough data to make a prediction
             if len(history_data) < investment_duration:
                 st.warning(f"Not enough data for {stock} to predict profit over {investment_duration} months.")
                 continue
-            
-            # Calculate the return over the exact number of months requested
-            initial_price = history_data.iloc[0]['Close']
-            final_price = history_data.iloc[-1]['Close']
-            total_return = (final_price - initial_price) / initial_price
-            
-            # Calculate profit
-            profit = investment_amount * total_return
-            data.append([stock, initial_price, final_price, total_return * 100, profit])
+
+            past_price = history_data.iloc[0]['Close']
+            future_price = history_data.iloc[-1]['Close']
+            return_percentage = (future_price - past_price) / past_price
+
+            projected_future_price = current_price * (1 + return_percentage)
+
+            profit = investment_amount * (projected_future_price - current_price) / current_price
+            total_profit += profit
+            data.append([stock, current_price, projected_future_price, return_percentage * 100, profit])
         
-        # Display results
         if data:
-            df = pd.DataFrame(data, columns=['Stock', 'Initial Price', 'Final Price', 'Return (%)', 'Profit (Baht)'])
+            df = pd.DataFrame(data, columns=['Stock', 'Current Price', 'Projected Future Price', 'Return (%)', 'Profit (Baht)'])
             st.write("Prediction Results:")
             st.dataframe(df)
             
-            # Plot the results
             fig = px.bar(df, x='Stock', y='Profit (Baht)', title='Predicted Profit by Stock', color='Profit (Baht)', color_continuous_scale=px.colors.sequential.Viridis)
             st.plotly_chart(fig)
+
+            if total_profit > 0:
+                st.success(f"Total Expected Profit: **{total_profit:.2f} Baht**")
+            else:
+                st.error(f"Total Expected Loss: **{abs(total_profit):.2f} Baht**")
